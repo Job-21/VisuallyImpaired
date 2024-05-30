@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assistive Student App</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="shortcut icon" href="vis.png" type="image/x-icon">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+
+        header {
+            background-color: #4a90e2;
+            color: white;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        main {
+            padding: 2rem;
+        }
+
+        section {
+            background: white;
+            margin-bottom: 2rem;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            color: #4a90e2;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        button {
+            padding: 1rem;
+            font-size: 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            background-color: #4a90e2;
+            color: white;
+        }
+
+        button:hover {
+            background-color: #357ab8;
+        }
+
+        .media-player button {
+            width: 48px;
+            height: 48px;
+            font-size: 1.5rem;
+            background-color: #4a90e2;
+            color: white;
+        }
+
+        .media-player button i {
+            pointer-events: none;
+        }
+
+        .bluetooth-data {
+            text-align: center;
+            margin-top: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        footer {
+            background-color: #4a90e2;
+            color: white;
+            text-align: center;
+            padding: 1.5rem;
+            width: 100%;
+        }
+
+        #loader {
+            display: none;
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media screen and (max-width: 768px) {
+            .button-group {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .media-player button {
+                margin-top: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Assistive Student App</h1>
+    </header>
+
+    <main>
+        <section id="pdf-section">
+            <h2>Read PDF Aloud</h2>
+            <input type="file" id="pdf-input" accept="application/pdf">
+            <div class="button-group">
+                <button id="read-pdf"><i class="fas fa-play"></i> Read PDF</button>
+                <button id="stop-pdf"><i class="fas fa-stop"></i> Stop</button>
+                <button id="record"><i class="fas fa-microphone"></i> Record</button>
+                <button id="download"><i class="fas fa-download"></i> Download MP3</button>
+            </div>
+            <div id="loader"></div>
+            <div class="media-player">
+                <button id="previous"><i class="fas fa-backward"></i></button>
+                <button id="pause"><i class="fas fa-pause"></i></button>
+                <button id="next"><i class="fas fa-forward"></i></button>
+            </div>
+        </section>
+
+        <section id="bluetooth-section">
+            <h2>Connect to Bluetooth Device</h2>
+            <button id="connect-bluetooth"><i class="fas fa-bluetooth"></i> Connect to Arduino</button>
+            <div class="bluetooth-data" id="bluetooth-data"></div>
+        </section>
+
+        <section id="realtime-data-section">
+            <h2>Real-time Data from Arduino</h2>
+            <div id="realtime-data"></div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Assistive Student App © 2024</p>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <script>
+        let speechSynthesisUtterance;
+        let currentText = "";
+        let isPaused = false;
+        let recorder;
+        let chunks = [];
+
+        const loader = document.getElementById('loader');
+
+        // Function to show loader
+        function showLoader() {
+            loader.style.display = 'block';
+        }
+
+        // Function to hide loader
+        function hideLoader() {
+            loader.style.display = 'none';
+        }
+
+        // PDF Reading Functionality
+        document.getElementById('read-pdf').addEventListener('click', () => {
+            const fileInput = document.getElementById('pdf-input');
+            const file = fileInput.files[0];
+
+            if (file) {
+                showLoader();
+                const reader = new FileReader();
+                reader.onload = function() {
+                    const typedarray = new Uint8Array(this.result);
+
+                    pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+                        let pagesPromises = [];
+
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            pagesPromises.push(pdf.getPage(i).then(page => {
+                                return page.getTextContent().then(textContent => {
+                                    return textContent.items.map(item => item.str).join(' ');
+                                });
+                            }));
+                        }
+
+                        Promise.all(pagesPromises).then(pagesText => {
+                            currentText = pagesText.join(' ');
+                            speechSynthesisUtterance = new SpeechSynthesisUtterance(currentText);
+                            speechSynthesis.speak(speechSynthesisUtterance);
+                            speechSynthesisUtterance.onend = () => {
+                                hideLoader();
+                            };
+                            hideLoader();
+                        });
+                    });
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert('Please select a PDF file first.');
+                hideLoader();
+            }
+        });
+
+        document.getElementById('stop-pdf').addEventListener('click', () => {
+            if (speechSynthesisUtterance) {
+                speechSynthesis.cancel();
+                hideLoader();
+            }
+        });
+
+        document.getElementById('pause').addEventListener('click', () => {
+            if (speechSynthesisUtterance && !isPaused) {
+                speechSynthesis.pause();
+                isPaused = true;
+                hideLoader();
+            }
+        });
+
+        document.getElementById('record').addEventListener('click', () => {
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    recorder = new MediaRecorder(stream);
+                    recorder.ondataavailable = e => {
+                        chunks.push(e.data);
+                    };
+                    recorder.onstop = () => {
+                        const blob = new Blob(chunks, { type: 'audio/mp3' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'recorded-speech.mp3';
+                        a.click();
+                        chunks = [];
+                    };
+                    recorder.start();
+                })
+                .catch(err => console.error('Error recording:', err));
+        });
+
+        document.getElementById('download').addEventListener('click', () => {
+            if (currentText) {
+                const utterance = new SpeechSynthesisUtterance(currentText);
+                utterance.onend = () => {
+                    if (recorder && recorder.state === 'recording') {
+                        recorder.stop();
+                    }
+                };
+
+                showLoader();
+                speechSynthesis.speak(utterance);
+                utterance.onend = () => {
+                    hideLoader();
+                };
+            } else {
+                alert('Please read the PDF aloud first.');
+            }
+        });
+
+        // Bluetooth Connection Functionality
+        document.getElementById('connect-bluetooth').addEventListener('click', () => {
+            navigator.bluetooth.requestDevice({
+                filters: [{ services: ['battery_service'] }]
+            })
+                .then(device => {
+                    console.log('Connecting to Bluetooth device...');
+                    return device.gatt.connect();
+                })
+                .then(server => {
+                    console.log('Getting Battery Service...');
+                    return server.getPrimary
+                    Service('battery_service');
+                })
+                .then(service => {
+                    console.log('Getting Battery Level Characteristic...');
+                    return service.getCharacteristic('battery_level');
+                })
+                .then(characteristic => {
+                    console.log('Reading Battery Level...');
+                    return characteristic.readValue();
+                })
+                .then(value => {
+                    const batteryLevel = value.getUint8(0);
+                    console.log(`Battery Level: ${batteryLevel}%`);
+                    document.getElementById('bluetooth-data').innerHTML = `<p>Battery Level: ${batteryLevel}%</p>`;
+                })
+                .catch(error => {
+                    console.error('Error connecting to Bluetooth device:', error);
+                    document.getElementById('bluetooth-data').innerHTML = '<p style="color: red;">Failed to connect to Bluetooth device.</p>';
+                });
+        });
+
+        // Placeholder for real-time data from Arduino simulation
+        setInterval(() => {
+            const realtimeDataSection = document.getElementById('realtime-data');
+            const randomData = Math.floor(Math.random() * 100);
+            realtimeDataSection.innerHTML = `<p>Real-time Data: ${randomData}</p>`;
+        }, 2000); // Update every 2 seconds
+    </script>
+</body>
+</html>
